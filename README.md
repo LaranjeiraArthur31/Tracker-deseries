@@ -8,5 +8,5 @@
 | Nome | GitHub |
 |------|--------|
 | Arthur Lopes Laranjeira | @LaranjeiraArthur31 |
-| [Nome 2] | [@usuario2] |
-| [Nome 3] | [@usuario3] |
+| Igor Mastrangelo Domingos | @IgorMastrangelo |
+| Vitor Martins Furlan | @vtr1812 |
