@@ -1,4 +1,5 @@
 # Tracker-de-Séries
+'''mermaid
 flowchart TD
 
 A[Usuário entra no app] --> B{Usuário já tem perfil?}
@@ -42,6 +43,7 @@ U --> V[Feedback do usuário]
 V --> W[Atualizar modelo de recomendação]
 
 W --> P
+'''
 ## Sobre o Projeto
 **Projeto:** [Tracker de Séries]
 **Problema que resolve:** [Notificar novos episódios e lançamentos]
