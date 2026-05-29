@@ -1,0 +1,336 @@
+{
+  "name": "Series Tracker — Completo + Metacritic",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Encontre sua próxima série",
+        "formDescription": "Preencha suas preferências e receba sugestões personalizadas!",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Gênero favorito",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Drama"
+                  },
+                  {
+                    "option": "Thriller"
+                  },
+                  {
+                    "option": "Crime"
+                  },
+                  {
+                    "option": "Comédia"
+                  },
+                  {
+                    "option": "Sci-Fi"
+                  },
+                  {
+                    "option": "Horror"
+                  },
+                  {
+                    "option": "Ação"
+                  },
+                  {
+                    "option": "Mistério"
+                  },
+                  {
+                    "option": "Documentário"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Duração máxima do episódio (minutos)",
+              "fieldType": "number"
+            },
+            {
+              "fieldLabel": "Número máximo de temporadas",
+              "fieldType": "number"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {
+          "buttonLabel": "Buscar séries!"
+        }
+      },
+      "id": "c60344c2-bdc4-4c9c-b110-9a326b9fce8d",
+      "name": "Form — Preferências",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -2240,
+        144
+      ],
+      "webhookId": "aad9bfd2-6d26-4063-ba0f-4d105f45554e"
+    },
+    {
+      "parameters": {
+        "jsCode": "const genreMap = {\n  'drama': 18, 'thriller': 53, 'crime': 80,\n  'comedia': 35, 'comédia': 35, 'sci-fi': 10765,\n  'horror': 27, 'acao': 10759, 'ação': 10759,\n  'misterio': 9648, 'mistério': 9648,\n  'documentario': 99, 'documentário': 99\n};\n\nconst body = $input.item.json;\nconst genero = body['Gênero favorito'] || '';\nconst chave = genero.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');\nconst genreId = genreMap[chave] || 18;\n\nreturn [{ json: {\n  email: body['Email'],\n  genero,\n  genre_id: genreId,\n  runtime_max: parseInt(body['Duração máxima do episódio (minutos)']) || 60,\n  temp_max: parseInt(body['Número máximo de temporadas']) || 10\n}}];"
+      },
+      "id": "b9e1624f-5c59-4d54-ba68-a7b525a3a35a",
+      "name": "Preparar Filtros",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2016,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.1-flash-lite-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.1-flash-lite-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "Você é um crítico especialista em séries de TV. O usuário quer uma recomendação com estas preferências:\n- Gênero: {{ $json.genero }} (TMDB genre_id: {{ $json.genre_id }})\n- Duração máxima do episódio: {{ $json.runtime_max }} minutos\n- Número máximo de temporadas: {{ $json.temp_max }}\n\nRecomende UMA série que se encaixe perfeitamente. Responda APENAS com um JSON válido, sem markdown, sem texto extra:\n{\n  \"nome\": \"Nome da Série em inglês (como cadastrado no TMDB)\",\n  \"por_que_assistir\": \"Argumento personalizado baseado nas preferências do usuário em 1-2 frases\"\n}",
+              "role": "model"
+            },
+            {
+              "content": "={{ $json.genero }}{{ $json.genre_id }}{{ $json.runtime_max }}{{ $json.temp_max }}"
+            }
+          ]
+        },
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        -1776,
+        144
+      ],
+      "id": "476763fe-6b25-4f46-a93b-b3d5acc2838c",
+      "name": "Gemini — Sugerir Nome",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "EGBstpLMAEGkiJeO",
+          "name": "Google Gemini(PaLM) Api account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.item.json;\n\nlet sugestao;\ntry {\n  const text = typeof raw === 'string' ? raw : JSON.stringify(raw);\n  const clean = text.replace(/```json|```/g, '').trim();\n  sugestao = typeof raw === 'object' ? raw : JSON.parse(clean);\n} catch(e) { sugestao = raw; }\n\nconst filtros = $('Preparar Filtros').item.json;\n\n// Build Metacritic-style slug: lowercase, spaces→hyphens, remove special chars\nconst nome = sugestao.nome || '';\nconst slug = nome\n  .toLowerCase()\n  .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9\\s-]/g, '')\n  .trim()\n  .replace(/\\s+/g, '-');\n\nreturn [{ json: {\n  email: filtros.email,\n  genero: filtros.genero,\n  genre_id: filtros.genre_id,\n  runtime_max: filtros.runtime_max,\n  temp_max: filtros.temp_max,\n  nome_sugerido: nome,\n  slug_metacritic: slug,\n  por_que_assistir: sugestao.por_que_assistir || ''\n}}];"
+      },
+      "id": "4e4e3de8-7e42-4a39-a387-6f3dc4eb7ae7",
+      "name": "Extrair Nome Sugerido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://www.metacritic.com/tv/{{ $json.slug_metacritic }}/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            },
+            {
+              "name": "Accept",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            },
+            {
+              "name": "Accept-Language",
+              "value": "pt-BR,pt;q=0.9,en;q=0.8"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "maxRedirects": 5
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "4ad7710f-d5c4-435e-947b-0c0c924d5ece",
+      "name": "Metacritic — Buscar Página",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1296,
+        144
+      ],
+      "notes": "Busca a página pública da série no Metacritic. Não requer API key."
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.item.json.data || $input.item.json || '';\nconst anterior = $('Extrair Nome Sugerido').item.json;\n\n// --- Extract Metascore (critic score 0-100) ---\n// Metacritic embeds scores in JSON-LD and also in data attributes\nlet metascore = null;\nlet userscore = null;\nlet descricao = '';\nlet genres = [];\nlet premiere = '';\nlet metacritic_url = `https://www.metacritic.com/tv/${anterior.slug_metacritic}/`;\n\nconst htmlStr = typeof html === 'string' ? html : JSON.stringify(html);\n\n// Metascore — look for scoreValue or score-number patterns\nconst metaMatch = htmlStr.match(/\\\"metaScore\\\":\\s*\\\"?(\\d+)\\\"?/)\n  || htmlStr.match(/c-siteReviewScore[^>]*>\\s*<span[^>]*>(\\d+)<\\/span>/)\n  || htmlStr.match(/Metascore[^\\d]*(\\d{2,3})/i)\n  || htmlStr.match(/\\\"score\\\":\\s*\\\"?(\\d{2,3})\\\"?.*?critic/i);\nif (metaMatch) metascore = parseInt(metaMatch[1]);\n\n// User score (0-10 scale)\nconst userMatch = htmlStr.match(/\\\"userScore\\\":\\s*\\\"?([\\d.]+)\\\"?/)\n  || htmlStr.match(/User Score[^\\d]*([\\d.]+)/i);\nif (userMatch) userscore = parseFloat(userMatch[1]);\n\n// Description from JSON-LD or og:description\nconst descMatch = htmlStr.match(/\\\"description\\\":\\s*\\\"([^\\\"]{20,500})\\\"/)\n  || htmlStr.match(/content=\\\"([^\\\"]{30,400})\\\"[^>]*name=\\\"description\\\"/i)\n  || htmlStr.match(/og:description.*?content=\\\"([^\\\"]{20,400})\\\"/i);\nif (descMatch) descricao = descMatch[1].replace(/\\\\n/g, ' ').replace(/\\\\u[0-9a-f]{4}/gi, '').trim();\n\n// Premiere / first air date\nconst premMatch = htmlStr.match(/\\\"datePublished\\\":\\s*\\\"([\\d-]+)\\\"/);\nif (premMatch) premiere = premMatch[1].substring(0, 4);\n\n// Genres from JSON-LD\nconst genreMatch = htmlStr.match(/\\\"genre\\\":\\s*(\\[[^\\]]+\\])/i);\nif (genreMatch) {\n  try { genres = JSON.parse(genreMatch[1]); } catch(e) {}\n}\n\n// Score label for email display\nlet scoreLabel = 'N/A';\nlet scoreColor = '#888';\nif (metascore !== null) {\n  scoreLabel = String(metascore);\n  scoreColor = metascore >= 61 ? '#6c3' : metascore >= 40 ? '#fc3' : '#f33';\n}\n\nreturn [{ json: {\n  email: anterior.email,\n  genero: anterior.genero,\n  nome: anterior.nome_sugerido,\n  ano: premiere || '—',\n  metascore: metascore !== null ? metascore : '—',\n  userscore: userscore !== null ? userscore : '—',\n  score_label: scoreLabel,\n  score_color: scoreColor,\n  descricao: descricao || `Série de ${anterior.genero} recomendada pelo nosso sistema.`,\n  genres: genres.join(', ') || anterior.genero,\n  por_que_assistir: anterior.por_que_assistir,\n  metacritic_url,\n  slug: anterior.slug_metacritic\n}}];"
+      },
+      "id": "2e5d8c4f-d172-4f0f-a757-9022ebf63fb0",
+      "name": "Metacritic — Extrair Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1056,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const mc = $input.item.json;\n\n// Compose HTML email body\nconst scoreBlock = mc.metascore !== '—'\n  ? `<span style=\"display:inline-block;background:${mc.score_color};color:#fff;font-weight:700;font-size:18px;padding:4px 12px;border-radius:6px;margin-right:8px;\">${mc.metascore}</span><span style=\"color:#888;font-size:13px;\">Metascore</span>`\n  : `<span style=\"color:#888;font-size:13px;\">Metascore não disponível</span>`;\n\nconst userBlock = mc.userscore !== '—'\n  ? `&nbsp;&nbsp;<span style=\"display:inline-block;background:#222;color:#fff;font-weight:700;font-size:16px;padding:4px 10px;border-radius:6px;margin-right:6px;\">${mc.userscore}</span><span style=\"color:#888;font-size:13px;\">User Score</span>`\n  : '';\n\nreturn [{ json: {\n  email: mc.email,\n  genero: mc.genero,\n  nome: mc.nome,\n  ano: mc.ano,\n  metascore: mc.metascore,\n  userscore: mc.userscore,\n  score_label: mc.score_label,\n  score_color: mc.score_color,\n  descricao: mc.descricao,\n  genres: mc.genres,\n  por_que_assistir: mc.por_que_assistir,\n  metacritic_url: mc.metacritic_url,\n  score_block_html: scoreBlock,\n  user_block_html: userBlock\n}}];"
+      },
+      "id": "ab6aa8b2-ccc3-495d-8b87-c1f970439296",
+      "name": "Formatar Resultado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -816,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@series-tracker.com",
+        "toEmail": "={{ $json.email }}",
+        "subject": "🎬 Sua sugestão: {{ $json.nome }} — Metascore {{ $json.metascore }}",
+        "emailFormat": "text",
+        "text": "aqui está a uma recomendação de séries baseada nos seus gostos e preferencias:",
+        "options": {}
+      },
+      "id": "5a021a88-43a6-4686-82d7-aeff6af84264",
+      "name": "Enviar Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        -560,
+        144
+      ],
+      "webhookId": "b4af145c-5d67-47e7-ba48-c0b77f600378",
+      "credentials": {
+        "smtp": {
+          "id": "3khcg4S7DdoPE7Am",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Form — Preferências": {
+      "main": [
+        [
+          {
+            "node": "Preparar Filtros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Filtros": {
+      "main": [
+        [
+          {
+            "node": "Gemini — Sugerir Nome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini — Sugerir Nome": {
+      "main": [
+        [
+          {
+            "node": "Extrair Nome Sugerido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Nome Sugerido": {
+      "main": [
+        [
+          {
+            "node": "Metacritic — Buscar Página",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metacritic — Buscar Página": {
+      "main": [
+        [
+          {
+            "node": "Metacritic — Extrair Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metacritic — Extrair Scores": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resultado": {
+      "main": [
+        [
+          {
+            "node": "Enviar Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "80c00553-ac4d-49c3-8c1f-42b23f33ce59",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9263d9fa628eb042435f16d31887dd92cdb94a0a0110c0f610884aaaf1d3bcaa"
+  },
+  "id": "kAeiZDKvTwBWJXGy",
+  "tags": [
+    {
+      "name": "series-tracker",
+      "id": "LKJKpJxF7E24FRtS",
+      "updatedAt": "2026-05-29T19:10:47.454Z",
+      "createdAt": "2026-05-29T19:10:47.454Z"
+    }
+  ]
+}
